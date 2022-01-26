@@ -4,71 +4,108 @@ author: "JJayes"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
+To get code out:
+```{r}
+# knitr::purl("code/01-Ingest.Rmd", documentation = 2)
+```
+
+# Purpose
+
+Scrape Private Property for property adverts that are from the 22 places on the monopoly board.
 
 ```{r}
 library(tidyverse)
-library(here)
 library(rvest)
+
+source("code/fns/get_n_pages.R")
+source("code/fns/stick.R")
+source("code/fns/get_property_link.R")
+source("code/fns/get_property_info.R")
 ```
 
-Purpose
+## Process
 
-Scrape property 24 or remax for price per square m.
+5 steps:
+
+1. Get the links to the search pages on Private Property by place.
+
+2. Get number of pages of results per place
+
+3. Create a list of links to get property advert URLs from
+
+4. Get the property ad URLs
+
+5. Then scrape the pages to get the information we want.
+
+Get links to base searches for each monopoly board region - in the file below.
+
+## 1. Get the links to the search pages on Private Property by place.
+
+Done manually: saved as rds file.
 
 ```{r}
-df <- readxl::read_excel(here("data", "board-stats.xlsx"))
-
-df %>% 
-  select(Property)
+df <- read_rds("data/board-stats.rds")
 ```
 
+## 2. Get number of pages of results per place
 
-Idea: write some function to search for each place and then get the listing details.
+Make list of links from source file:
 
 ```{r}
-df %>% 
-  pull(base_url)
+tbl_of_pages <- df %>% 
+  # filters here exclude land and farms
+  select(Property, base_url, filters) %>% 
+  mutate(base_url = str_c(base_url, filters)) %>% 
+  select(-filters)
 ```
 
-Constructing function
+`get_n_pages` is a function written to find number of pages by looking at number of ads, dividing by per page, and rounding up.
 
 ```{r}
-url <- "https://www.privateproperty.co.za/for-sale/kwazulu-natal/durban/westville/westville/407"
+tbl_of_pages <- tbl_of_pages %>% 
+  mutate(n_pages = map(base_url, possibly(get_n_pages, 0)))
 
-html <- read_html(url)
+tbl_of_pages <- tbl_of_pages %>%
+  unnest(n_pages)
 ```
 
-How many pages?
+## 3. Create a list of links to get property advert URLs from
+
+`stick` is a function that makes pages 1 through number of pages in a tibble and then we unnest it.
 
 ```{r}
-n_pages <- html %>% 
-  # get properties and divide by number of results per page (24)
-  html_nodes(".listingCount") %>% 
-  html_text(trim = T) %>% 
-  str_extract(., "of.*") %>% 
-  parse_number() %>% 
-  as_tibble() %>% 
-  mutate(value = ceiling(value / 24)) %>% 
-  pull(value)
-  
+tbl_of_pages <- tbl_of_pages %>%
+  # pmap gang!
+  mutate(pages = pmap(list(base_url, n_pages), stick)) %>%
+  unnest(pages)
 ```
 
-Get links
+
+## 4. Get the property ad URLs
+
+`get_property_link` is a function that scrapes the search results page for each url for the property advert.
 
 ```{r}
-html %>% 
-  html_nodes(".listingResult") %>% 
-  html_attr("href")
+tbl_of_links <- tbl_of_pages %>%
+  head(5) %>%
+  mutate(propery_links = map(pages, possibly(get_property_link, "failed")))
+
+st <- format(Sys.time(), "%Y-%m-%d-%I-%M-%p")
+
+tbl_of_links %>% 
+  unnest(propery_links) %>% 
+  write_rds(paste0("data/links/list_of_links", st, ".rds"), compress = "gz")
 ```
 
+## 5. Then scrape the pages to get the information we want.
 
-Get details from property listing
-
-Things that I really need are price, square m, and then facts like bedrooms bathrooms and garages.
+Get details from property listing using `get_property_info`
 
 Info:
 
 * Price
+
+* Address
 
 * Floor area and rates and levy - can try to get from text
 
@@ -76,166 +113,22 @@ Info:
 
 * Key property features
 
+* Agency
+
+Using function through list
 
 ```{r}
-url <- "https://www.privateproperty.co.za/for-sale/kwazulu-natal/durban/westville/westville/T2949064"
+tbl_of_links <- tbl_of_links %>% 
+  unnest(propery_links)
 
-html <- read_html(url)
+results <- tbl_of_links %>% 
+  mutate(property_link = str_c("https://www.privateproperty.co.za", property_link)) %>% 
+  mutate(result = map(property_link, possibly(get_property_info, "failed")))
 
-# price
-html %>% 
-  html_nodes(".detailsPrice") %>% 
-  html_text() %>% 
-  as_tibble() %>% 
-  head(1) %>% 
-  pull() %>% 
-  str_remove_all(., " ") %>% 
-  parse_number()
+st <- format(Sys.time(), "%Y-%m-%d-%I-%M-%p")
 
-# bed bath garage
-html %>% 
-  html_nodes(".resultFeatures") %>% 
-  html_text() %>% 
-  as_tibble() %>% 
-  separate_rows(value, sep = "\\r") %>% 
-  mutate(value = str_squish(value)) %>% 
-  filter(nchar(value) > 0) %>% 
-  rename(key = value) %>% 
-  mutate(value = parse_number(key),
-         key = str_remove(key, "[0-9]."))
-
-# mainFeatures
-html %>% 
-  html_nodes(".mainFeatures") %>% 
-  html_text() %>% 
-  as_tibble() %>% 
-  separate_rows(value, sep = "\\r") %>% 
-  mutate(value = str_squish(value)) %>% 
-  filter(nchar(value) > 0) %>% 
-  rename(key = value) %>% 
-  mutate(value = parse_number(key),
-         key = str_squish(str_remove(key, "[0-9].*")))
-
-html %>%
-  html_nodes(".attributeLabel") %>%
-  html_text() %>%
-  as_tibble() %>%
-  rename(key = value) %>%
-  bind_cols(html %>%
-    html_nodes(".propAttrValue") %>%
-    html_text() %>%
-    as_tibble())
-
-# still to work on this.
-html %>% 
-  html_nodes(".description") %>% 
-  html_text() %>% 
-  str_squish()
+results %>% 
+  write_rds(paste0("data/results/results", st, ".rds"), compress = "gz")
 
 ```
-
-
-
-Function to iterature thruogh urls
-
-```{r}
-get_property_info <- function(url) {
-  html <- read_html(url)
-
-  # price
-  price <- html %>%
-    html_nodes(".detailsPrice") %>%
-    html_text() %>%
-    as_tibble() %>%
-    head(1) %>%
-    pull() %>%
-    str_remove_all(., " ") %>%
-    parse_number()
-
-  # bed bath garage
-  result_features <- html %>%
-    html_nodes(".resultFeatures") %>%
-    html_text() %>%
-    as_tibble() %>%
-    separate_rows(value, sep = "\\r") %>%
-    mutate(value = str_squish(value)) %>%
-    filter(nchar(value) > 0) %>%
-    rename(key = value) %>%
-    mutate(
-      value = parse_number(key),
-      key = str_remove(key, "[0-9].")
-    ) %>% nest(result_feature = everything())
-
-  # mainFeatures
-  main_features <- html %>%
-    html_nodes(".mainFeatures") %>%
-    html_text() %>%
-    as_tibble() %>%
-    separate_rows(value, sep = "\\r") %>%
-    mutate(value = str_squish(value)) %>%
-    filter(nchar(value) > 0) %>%
-    rename(key = value) %>%
-    mutate(
-      value = parse_number(key),
-      key = str_squish(str_remove(key, "[0-9].*"))
-    ) %>% nest(main_feature = everything())
-
-  attributes <- html %>%
-    html_nodes(".attributeLabel") %>%
-    html_text() %>%
-    as_tibble() %>%
-    rename(key = value) %>%
-    bind_cols(html %>%
-      html_nodes(".propAttrValue") %>%
-      html_text() %>%
-      as_tibble()) %>% nest(attribute = everything())
-
-  # still to work on this.
-  description <- html %>%
-    html_nodes(".description") %>%
-    html_text() %>%
-    str_squish()
-  
-  tibble(price, result_features, main_features, attributes, description)
-}
-
-test <- get_property_info(url)
-
-test %>% 
-  unnest(c(result_feature))
-```
-
-
-## Property 24
-
-```{r}
-url <- "https://www.property24.com/apartments-for-sale/westville/kwazulu-natal/190"
-
-html <- read_html(url)
-
-html %>% 
-  html_nodes(".p24_featureDetails") %>% 
-  html_attr("title")
-  html_text() %>% 
-  str_squish()
-  
-html %>%
-  html_nodes(".p24_size") %>%
-  html_text() %>%
-  str_squish() %>% 
-  parse_number()
-
-
-
-html %>%
-  html_nodes(".p24_price") %>%
-  html_attr("itemprop") %>% 
-  html_attr("content") %>% 
-  as_tibble() %>% 
-  filter(!is.na(value)) %>% 
-  
-  html_nodes("[itemprop='price']")
-  html_text()
-```
-
 

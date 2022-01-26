@@ -7,5 +7,20 @@ output: html_document
 
 ```{r}
 library(tidyverse)
+
+results %>%
+  filter(result != "failed") %>% 
+  unnest(result)
+
+test %>% 
+  unnest(c(main_feature)) %>% 
+  pivot_wider(names_from = key, values_from = value) %>% 
+  janitor::clean_names() %>% 
+  unnest(c(result_feature)) %>% 
+  pivot_wider(names_from = key, values_from = value) %>% 
+  janitor::clean_names() %>% 
+  unnest(attribute) %>% 
+  pivot_wider(names_from = key, values_from = value) %>% 
+  janitor::clean_names() %>% view
 ```
 
