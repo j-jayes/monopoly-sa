@@ -125,6 +125,19 @@ Info:
 
 Using function through list
 
+```{r}
+# tbl_of_links <- `list_of_links_1_2002022-01-26-02-00-pm` %>%
+#   unnest(propery_links) %>%
+#   bind_rows(`list_of_links_201_4002022-01-26-02-00-pm` %>%
+#     unnest(propery_links)) %>%
+#   bind_rows(`list_of_links_401_6002022-01-26-02-00-pm` %>%
+#     unnest(propery_links)) %>%
+#   bind_rows(`list_of_links_601_7172022-01-26-02-00-pm` %>%
+#     unnest(propery_links))
+# 
+# tbl_of_links %>% write_rds("data/links/list_of_links_complete.rds")
+```
+
 
 ```{r}
 results <- tbl_of_links %>% 
