@@ -1,6 +1,7 @@
 # get property info
 get_property_info <- function(url) {
   message(paste0("Getting property info from ", url))
+  Sys.sleep(0.05)
   html <- read_html(url)
 
   # price
