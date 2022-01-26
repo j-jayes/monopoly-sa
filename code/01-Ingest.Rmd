@@ -90,17 +90,18 @@ tbl_of_pages %>% head()
 `get_property_link` is a function that scrapes the search results page for each url for the property advert.
 
 ```{r}
+# here's where I am
 tbl_of_links <- tbl_of_pages %>%
-  head(2) %>%
-  mutate(propery_links = map(pages, possibly(get_property_link, "failed")))
+  # filter(between(row_number(), 601, 800)) %>%
+  mutate(property_links = map(pages, possibly(get_property_link, "failed")))
 
 tbl_of_links <- tbl_of_links %>% 
-  unnest(propery_links)
+  unnest(property_links)
 
 st <- format(Sys.time(), "%Y-%m-%d-%I-%M-%p")
 
 tbl_of_links %>% 
-  write_rds(paste0("data/links/list_of_links", st, ".rds"), compress = "gz")
+  write_rds(paste0("data/links/list_of_links_", st, ".rds"), compress = "gz")
 
 ```
 
@@ -123,6 +124,7 @@ Info:
 * Agency
 
 Using function through list
+
 
 ```{r}
 results <- tbl_of_links %>% 
