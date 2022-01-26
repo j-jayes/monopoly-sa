@@ -23,7 +23,7 @@ jobs:
         R -e 'install.packages("rvest")'
     # Run R script
     - name: Scrape Private Property
-      run: Rscript 01-Ingest.R
+      run: Rscript 011-Scrape.R
 
     # Add new files in data folder, commit along with other modified files, push
     - name: Commit files
