@@ -5,3 +5,237 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
+```{r}
+library(tidyverse)
+library(here)
+library(rvest)
+```
+
+Purpose
+
+Scrape property 24 or remax for price per square m.
+
+```{r}
+df <- readxl::read_excel(here("data", "board-stats.xlsx"))
+
+df %>% 
+  select(Property)
+```
+
+
+Idea: write some function to search for each place and then get the listing details.
+
+```{r}
+df %>% 
+  pull(base_url)
+```
+
+Constructing function
+
+```{r}
+url <- "https://www.privateproperty.co.za/for-sale/kwazulu-natal/durban/westville/westville/407"
+
+html <- read_html(url)
+```
+
+How many pages?
+
+```{r}
+n_pages <- html %>% 
+  # get properties and divide by number of results per page (24)
+  html_nodes(".listingCount") %>% 
+  html_text(trim = T) %>% 
+  str_extract(., "of.*") %>% 
+  parse_number() %>% 
+  as_tibble() %>% 
+  mutate(value = ceiling(value / 24)) %>% 
+  pull(value)
+  
+```
+
+Get links
+
+```{r}
+html %>% 
+  html_nodes(".listingResult") %>% 
+  html_attr("href")
+```
+
+
+Get details from property listing
+
+Things that I really need are price, square m, and then facts like bedrooms bathrooms and garages.
+
+Info:
+
+* Price
+
+* Floor area and rates and levy - can try to get from text
+
+* Text description
+
+* Key property features
+
+
+```{r}
+url <- "https://www.privateproperty.co.za/for-sale/kwazulu-natal/durban/westville/westville/T2949064"
+
+html <- read_html(url)
+
+# price
+html %>% 
+  html_nodes(".detailsPrice") %>% 
+  html_text() %>% 
+  as_tibble() %>% 
+  head(1) %>% 
+  pull() %>% 
+  str_remove_all(., " ") %>% 
+  parse_number()
+
+# bed bath garage
+html %>% 
+  html_nodes(".resultFeatures") %>% 
+  html_text() %>% 
+  as_tibble() %>% 
+  separate_rows(value, sep = "\\r") %>% 
+  mutate(value = str_squish(value)) %>% 
+  filter(nchar(value) > 0) %>% 
+  rename(key = value) %>% 
+  mutate(value = parse_number(key),
+         key = str_remove(key, "[0-9]."))
+
+# mainFeatures
+html %>% 
+  html_nodes(".mainFeatures") %>% 
+  html_text() %>% 
+  as_tibble() %>% 
+  separate_rows(value, sep = "\\r") %>% 
+  mutate(value = str_squish(value)) %>% 
+  filter(nchar(value) > 0) %>% 
+  rename(key = value) %>% 
+  mutate(value = parse_number(key),
+         key = str_squish(str_remove(key, "[0-9].*")))
+
+html %>%
+  html_nodes(".attributeLabel") %>%
+  html_text() %>%
+  as_tibble() %>%
+  rename(key = value) %>%
+  bind_cols(html %>%
+    html_nodes(".propAttrValue") %>%
+    html_text() %>%
+    as_tibble())
+
+# still to work on this.
+html %>% 
+  html_nodes(".description") %>% 
+  html_text() %>% 
+  str_squish()
+
+```
+
+
+
+Function to iterature thruogh urls
+
+```{r}
+get_property_info <- function(url) {
+  html <- read_html(url)
+
+  # price
+  price <- html %>%
+    html_nodes(".detailsPrice") %>%
+    html_text() %>%
+    as_tibble() %>%
+    head(1) %>%
+    pull() %>%
+    str_remove_all(., " ") %>%
+    parse_number()
+
+  # bed bath garage
+  result_features <- html %>%
+    html_nodes(".resultFeatures") %>%
+    html_text() %>%
+    as_tibble() %>%
+    separate_rows(value, sep = "\\r") %>%
+    mutate(value = str_squish(value)) %>%
+    filter(nchar(value) > 0) %>%
+    rename(key = value) %>%
+    mutate(
+      value = parse_number(key),
+      key = str_remove(key, "[0-9].")
+    ) %>% nest(result_feature = everything())
+
+  # mainFeatures
+  main_features <- html %>%
+    html_nodes(".mainFeatures") %>%
+    html_text() %>%
+    as_tibble() %>%
+    separate_rows(value, sep = "\\r") %>%
+    mutate(value = str_squish(value)) %>%
+    filter(nchar(value) > 0) %>%
+    rename(key = value) %>%
+    mutate(
+      value = parse_number(key),
+      key = str_squish(str_remove(key, "[0-9].*"))
+    ) %>% nest(main_feature = everything())
+
+  attributes <- html %>%
+    html_nodes(".attributeLabel") %>%
+    html_text() %>%
+    as_tibble() %>%
+    rename(key = value) %>%
+    bind_cols(html %>%
+      html_nodes(".propAttrValue") %>%
+      html_text() %>%
+      as_tibble()) %>% nest(attribute = everything())
+
+  # still to work on this.
+  description <- html %>%
+    html_nodes(".description") %>%
+    html_text() %>%
+    str_squish()
+  
+  tibble(price, result_features, main_features, attributes, description)
+}
+
+test <- get_property_info(url)
+
+test %>% 
+  unnest(c(result_feature))
+```
+
+
+## Property 24
+
+```{r}
+url <- "https://www.property24.com/apartments-for-sale/westville/kwazulu-natal/190"
+
+html <- read_html(url)
+
+html %>% 
+  html_nodes(".p24_featureDetails") %>% 
+  html_attr("title")
+  html_text() %>% 
+  str_squish()
+  
+html %>%
+  html_nodes(".p24_size") %>%
+  html_text() %>%
+  str_squish() %>% 
+  parse_number()
+
+
+
+html %>%
+  html_nodes(".p24_price") %>%
+  html_attr("itemprop") %>% 
+  html_attr("content") %>% 
+  as_tibble() %>% 
+  filter(!is.na(value)) %>% 
+  
+  html_nodes("[itemprop='price']")
+  html_text()
+```
+
+
