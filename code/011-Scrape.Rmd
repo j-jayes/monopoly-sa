@@ -48,3 +48,61 @@ results %>%
   scale_x_log10(labels = scales::dollar_format()) 
 ```
 
+
+```{r}
+library(ggridges)
+
+results %>% 
+  filter(result != "failed") %>% 
+  unnest(result) %>% 
+  filter(!is.na(price)) %>% 
+  mutate(Property = fct_reorder(Property, price, .fun = "median")) %>% 
+  ggplot(aes(x = price, y = Property, fill = Property)) +
+  geom_density_ridges(show.legend = F) +
+  # facet_wrap(~ Property) +
+  scale_x_log10(labels = scales::dollar_format(prefix = "R ")) 
+
+```
+
+
+
+```{r}
+df_results <- results %>% 
+  filter(result != "failed") %>% 
+  unnest(result) %>% 
+  filter(!is.na(price))
+
+df_median_prices <- df_results %>%
+  group_by(Property) %>% 
+  summarise(median_price = median(price)) %>% 
+  ungroup() %>% 
+  arrange(median_price)
+```
+
+```{r}
+df <- read_rds("data/board-stats.rds")
+
+df %>% 
+  select(Property, board_price = Price) %>% 
+  inner_join(df_median_prices) %>% 
+  ggplot(aes(board_price, median_price, label = Property)) +
+  geom_point() +
+  geom_text(nudge_y = .1, check_overlap = T) +
+  scale_y_log10(labels = scales::dollar_format(prefix = "R ")) +
+  scale_x_continuous(labels = scales::dollar_format(prefix = "R ")) +
+  geom_smooth(method = "lm", se = F) +
+  labs(x = "Price on Monopoly Board",
+       y = "Median price of property from PrivateProperty.co.za")
+  
+```
+
+
+```{r}
+
+df_results %>% 
+  unnest(result_feature) %>% 
+  distinct(property_link, key, .keep_all = T) %>% 
+  pivot_wider(names_from = key, values_from = value) %>% view
+
+```
+

@@ -30,7 +30,7 @@ get_property_info <- function(url) {
     rename(key = value) %>%
     mutate(
       value = parse_number(key),
-      key = str_remove(key, "[0-9].")
+      key = str_extract(key, "Beds|Baths|Garages")
     ) %>%
     nest(result_feature = everything())
 
