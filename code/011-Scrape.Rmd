@@ -16,7 +16,7 @@ source("code/fns/get_property_info.R")
 tbl_of_links <- read_rds("data/links/list_of_links_complete.rds")
 
 results <- tbl_of_links %>% 
-  head(20) %>% 
+  # head(20) %>% 
   mutate(property_link = paste0("https://www.privateproperty.co.za", property_link)) %>%
   mutate(result = map(property_link, possibly(get_property_info, "failed")))
 
@@ -27,3 +27,24 @@ results %>%
 ```
 
 Chang the head(20) and filename_test
+
+Ones to redo
+
+```{r}
+links_to_redo <- results %>% 
+  filter(result == "failed")
+
+links_to_redo %>% head(20) %>% pull(property_link)
+```
+
+
+```{r}
+results %>% 
+  filter(result != "failed") %>% 
+  unnest(result) %>% 
+  ggplot(aes(price, fill = Property)) +
+  geom_density() +
+  facet_wrap(~ Property) +
+  scale_x_log10(labels = scales::dollar_format()) 
+```
+
