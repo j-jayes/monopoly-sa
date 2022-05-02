@@ -81,7 +81,7 @@ tbl_of_pages <- tbl_of_pages %>%
   mutate(pages = pmap(list(base_url, n_pages), stick)) %>%
   unnest(pages)
 
-tbl_of_pages %>% head()
+tbl_of_pages
 ```
 
 
@@ -92,7 +92,7 @@ tbl_of_pages %>% head()
 ```{r}
 # here's where I am
 tbl_of_links <- tbl_of_pages %>%
-  # filter(between(row_number(), 601, 800)) %>%
+  # filter(between(row_number(), 0, 1)) %>%
   mutate(property_links = map(pages, possibly(get_property_link, "failed")))
 
 tbl_of_links <- tbl_of_links %>% 
@@ -126,28 +126,60 @@ Info:
 Using function through list
 
 ```{r}
-# tbl_of_links <- `list_of_links_1_2002022-01-26-02-00-pm` %>%
+# tbl_of_links <- `list_of_links_2022-02-14-03-59-pm` %>%
 #   unnest(propery_links) %>%
-#   bind_rows(`list_of_links_201_4002022-01-26-02-00-pm` %>%
-#     unnest(propery_links)) %>%
-#   bind_rows(`list_of_links_401_6002022-01-26-02-00-pm` %>%
-#     unnest(propery_links)) %>%
-#   bind_rows(`list_of_links_601_7172022-01-26-02-00-pm` %>%
+#   bind_rows(`list_of_links_2022-02-14-03-42-pm` %>%
 #     unnest(propery_links))
 # 
-# tbl_of_links %>% write_rds("data/links/list_of_links_complete.rds")
+# tbl_of_links %>% write_rds("data/links/list_of_links_complete_14_02_22.rds")
 ```
 
 
 ```{r}
+tbl_of_links <- tbl_of_links %>% 
+  mutate(property_link = paste0("https://www.privateproperty.co.za", property_link))
+
 results <- tbl_of_links %>% 
-  mutate(property_link = paste0("https://www.privateproperty.co.za", property_link)) %>%
+  # filter(between(row_number()))
   mutate(result = map(property_link, possibly(get_property_info, "failed")))
 
 st <- format(Sys.time(), "%Y-%m-%d-%I-%M-%p")
 
 results %>% 
   write_rds(paste0("data/results/results", st, ".rds"), compress = "gz")
+```
 
+
+```{r}
+results <- readRDS("~/Recon/monopoly-sa/data/results/results_test2022-01-26-02-40-PM.rds") %>% 
+  bind_rows(readRDS("~/Recon/monopoly-sa/data/results/results_test2022-01-26-11-37-pm.rds")) %>% 
+  bind_rows(readRDS("~/Recon/monopoly-sa/data/results/results2022-01-26-02-00-pm.rds"))
+```
+
+```{r}
+results <- results %>% 
+  filter(result != "failed")
+
+results <- results %>% 
+  unnest(result)
+
+results %>% count(Property)
+
+# results %>% write_rds("data/results/results_15_02_22.rds")
+
+results %>% 
+  unnest(result_feature) %>% 
+  pivot_wider(names_from = key, values_from = value) %>% view
+  unnest(`.5 Baths`) %>% pull(property_link)
+  filter(!is.null(`.5 Baths`)) %>% view
+```
+
+
+
+
+```{r}
+results %>% 
+  unnest(result_feature)
+  ggplot(aes(price, ))
 ```
 

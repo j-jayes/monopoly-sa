@@ -23,4 +23,134 @@ knit: (function(input, ...) {
 knitr::opts_chunk$set(echo = FALSE, message = F, warning = F, fig.align = "center")
 ```
 
-Test
+
+```{r}
+library(tidyverse)
+
+df <- read_rds("data/results/results_15_02_22.rds")
+```
+
+
+```{r}
+df %>% 
+  count(Property)
+
+df_prices <- df %>% 
+  group_by(Property) %>% 
+  summarise(median_asking_price = median(price, na.rm = T)) %>% 
+  ungroup()
+
+df_stats <- read_rds("data/board-stats.rds")
+
+df <- df_stats %>% 
+  inner_join(df_prices)
+```
+
+
+```{r}
+library(ggbump)
+
+df_bump <- df %>% 
+  select(Property, Group, Price, median_asking_price) %>% 
+  janitor::clean_names() %>% 
+  pivot_longer(cols = c(price, median_asking_price)) %>% 
+  group_by(name) %>% 
+  arrange(value) %>% 
+  mutate(y = row_number()) %>% 
+  ungroup() %>% 
+  mutate(name = factor(name),
+         x = as.numeric(name))
+
+
+df_bump <- df_bump %>% 
+  mutate(name = ifelse(name == "price", "Monopoly Price", "Private Property Price"),
+         x = ifelse(x == 2, 1, 2))
+# jpeg(
+#     filename="images/ggbump_comparison_grey.jpeg",
+#     width=8,
+#     height=6,
+#     units="in",
+#     res=1000)
+
+
+df_bump %>%
+  ggplot(aes(x, y, colour = property)) +
+  geom_point(size = 8) +
+  geom_bump(cex = 2) +
+  # scale_y_reverse(breaks = df_bump$y %>% unique()) +
+  scale_x_continuous(
+    breaks = df_bump$x %>% unique(),
+    labels = c(
+      "Monopoly SA Ranking",
+      "Private Property Ranking"
+    ),
+    limits = c(NA, 2.4)
+  ) +
+  geom_point(
+    data = tibble(x = 0.9, y = 1:20), aes(x = x, y = y),
+    inherit.aes = F,
+    color = "grey20",
+    size = 10,
+    pch = 21
+  ) +
+  geom_text(
+    data = tibble(x = .9, y = 1:20), aes(x = x, y = y, label = y),
+    inherit.aes = F,
+    color = "grey20"
+  ) +
+  geom_text(
+    data = df_bump %>%
+      filter(name == "Monopoly Price"),
+    aes(label = property, x = x + .1),
+    color = "grey20",
+    nudge_y = .43,
+    nudge_x = -.05,
+    size = 3.5,
+    fontface = 2,
+    hjust = 0
+  ) +
+  theme(
+    legend.position = "none",
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.border = element_blank(),
+    axis.text.x = element_text(size = 12)
+  ) +
+  labs(
+    y = "Least to most expensive properties",
+    x = NULL
+  )
+
+# dev.off()
+```
+
+
+
+## Comparison
+
+```{r}
+df <- read_rds("data/board-stats.rds")
+
+df_results <- read_rds("data/results/results_15_02_22.rds") %>% 
+  filter(!is.na(price))
+
+df_median_prices <- df_results %>%
+  group_by(Property) %>% 
+  summarise(median_price = median(price)) %>% 
+  ungroup() %>% 
+  arrange(median_price)
+
+df %>% 
+  select(Property, board_price = Price) %>% 
+  inner_join(df_median_prices) %>% 
+  ggplot(aes(board_price, median_price, label = Property)) +
+  geom_point() +
+  geom_text(nudge_y = .1, check_overlap = T) +
+  scale_y_log10(labels = scales::dollar_format(prefix = "R ")) +
+  scale_x_continuous(labels = scales::dollar_format(prefix = "R ")) +
+  geom_smooth(method = "lm", se = F) +
+  labs(x = "Price on Monopoly Board",
+       y = "Median price of property from PrivateProperty.co.za")
+```
+

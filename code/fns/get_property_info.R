@@ -45,7 +45,7 @@ get_property_info <- function(url) {
     rename(key = value) %>%
     mutate(
       value = parse_number(key),
-      key = str_squish(str_remove(key, "[0-9].*"))
+      key = str_squish(str_extract(key, "Floor Area|Land Area|Rates|Levy"))
     ) %>%
     nest(main_feature = everything())
 
