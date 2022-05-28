@@ -1,0 +1,294 @@
+---
+title: "Ingest-sweden"
+format: html
+---
+
+## Purpose
+
+Scraper for Swedish monopoly board game. Show different home prices by region in Stockholm. 
+
+### Board
+
+```{r}
+board <- tibble(
+  name = c(
+    "Västerlånggatan",
+    "Hornsgatan",
+    "Folkungagatan",
+    "Götgatan",
+    "Ringvägen",
+    "Sankt Eriksgatan",
+    "Odengatan",
+    "Valhallavägen",
+    "Sturegatan",
+    "Karlavägan",
+    "Narvavägen",
+    "Strandvägen",
+    "kungsträdgårdsgatan",
+    "Hamngatan",
+    "Vasagatan",
+    "Kungsgatan",
+    "Stureplan",
+    "Gustav Adolfs Torg",
+    "Drottninggatan",
+    "Diplomgatan",
+    "Centrum",
+    "Norrmalmstorg"
+  ),
+  url = c("https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475175",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=476067",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475969",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475965",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475989",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475442",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475586",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475691",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475737",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475695",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475769",
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475756",
+          "???", # What do I do here? It's a short street with a park on one side and a big bank on the other...
+          "???", # What do I do here? It's a short street with shops and offices...
+          "???", # What do I do here?
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475094",
+          "???", # What do I do here?
+          "???", # What do I do here?
+          "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475084",
+          "???", # What do I do here?
+          "???", # What do I do here?
+          "???" # What do I do here?
+          ),
+  board_colour = c(
+    "light purple",
+    "light purple",
+    "light blue",
+    "light blue",
+    "light blue",
+    "dark purple",
+    "dark purple",
+    "dark purple",
+    "orange",
+    "orange",
+    "orange",
+    "red",
+    "red",
+    "red",
+    "yellow",
+    "yellow",
+    "yellow",
+    "dark green",
+    "dark green",
+    "dark green",
+    "dark blue",
+    "dark blue"
+  ),
+  board_price = c(
+    1000,
+    1000,
+    2000,
+    2000,
+    2200,
+    2500,
+    2500,
+    3000,
+    3500,
+    3500,
+    3800,
+    4200,
+    4200,
+    4500,
+    5000,
+    5000,
+    5300,
+    6000,
+    6000,
+    6000,
+    6500,
+    8000
+  )
+)
+```
+
+
+```{r}
+library(tidyverse)
+library(rvest)
+
+```
+
+### Function to get property details
+
+```{r}
+get_property_details <- function(url) {
+  message("Getting info from ", url)
+  html <- read_html(url)
+
+  title <- html %>%
+    html_nodes(".hcl-heading--size1") %>%
+    html_text() %>%
+    str_remove(., "Slutpris") %>%
+    str_squish() %>% 
+    as_tibble() %>% 
+    mutate(attribute = "title")
+
+  price <- html %>%
+    html_nodes(".sold-property__price") %>%
+    html_text() %>%
+    str_squish() %>%
+    tibble(value = .) %>%
+    mutate(attribute = "price")
+
+  sale_date <- html %>%
+    html_nodes(".sold-property__metadata") %>%
+    html_children() %>%
+    html_attr("datetime") %>%
+    as_tibble() %>%
+    filter(!is.na(value)) %>%
+    mutate(attribute = "sale_date")
+
+
+  attributes <- html %>%
+    html_nodes(".sold-property__attribute") %>%
+    html_text() %>%
+    as_tibble() %>%
+    rename(attribute = value)
+
+  attribute_values <- html %>%
+    html_nodes(".sold-property__attribute-value") %>%
+    html_text() %>%
+    as_tibble() %>%
+    mutate(value = str_squish(value))
+
+  coords <- html %>%
+    html_nodes(".sold-property__map") %>%
+    as.character() %>%
+    as_tibble() %>%
+    separate_rows(value, sep = ";") %>%
+    filter(
+      str_detect(value, "\\["),
+      str_detect(value, "[0-9]")
+    ) %>%
+    separate_rows(value, sep = "\\,") %>%
+    mutate(value = parse_number(value)) %>%
+    filter(!is.na(value)) %>%
+    mutate(value = as.character(value)) %>%
+    mutate(attribute = str_c("coords_", row_number()))
+
+  info <- attributes %>%
+    bind_cols(attribute_values) %>%
+    bind_rows(price) %>%
+    bind_rows(coords) %>%
+    bind_rows(sale_date) %>% 
+    bind_rows(title)
+
+  info
+}
+
+```
+
+Function to get list of properties from url
+
+What do i need? number of pages and list of links.
+
+Number of pages:
+
+```{r}
+url <- "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475695"
+url <- "https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475175"
+
+get_n_pages <- function(url) {
+  message("Getting number of pages from ", url)
+  html <- read_html(url)
+
+  results <- html %>%
+    html_nodes(".result-pagination") %>%
+    html_text() %>%
+    str_squish() %>%
+    str_extract(., "av [0-9]+") %>% # extract from pagination the number of results "of"
+    parse_number() %>%
+    if_else(is.na(.), 1, .)
+
+  pages <- ceiling(results / 50) # Round up
+  
+  pages
+}
+
+```
+
+What does structure of url look like?
+
+```{r}
+"https://www.hemnet.se/salda/bostader?location_ids%5B%5D=475695&page=2"
+
+board <- board %>% 
+  mutate(pages = map(url, possibly(get_n_pages, NA)))
+
+board <- board %>% 
+  unnest(pages)
+```
+
+
+```{r}
+stick <- function(url, pages){
+  str_c(url, "&page=", 1:pages)
+}
+
+board_list <- board %>% 
+  filter(!is.na(pages)) %>% 
+  mutate(page_of_links = pmap(list(url, pages), stick)) %>% 
+  unnest(page_of_links)
+```
+
+Now get list of links from each page
+
+```{r}
+get_links <- function(url) {
+  message("Getting links from ", url)
+  html <- read_html(url)
+
+  property_links <- html %>%
+    html_nodes(".sold-property-link") %>%
+    html_attr("href")
+
+  property_links <- property_links %>%
+    as_tibble() %>%
+    rename(property_link = value)
+}
+```
+
+
+```{r}
+board_list_links <- board_list %>% 
+  # head(3) %>%
+  mutate(property_links = map(page_of_links, possibly(get_links, "failed")))
+
+board_list_links %>%
+  write_rds("Sweden/data_v2.rds")
+```
+
+Now get the info from each property!
+
+```{r}
+board <- board_list_links %>% 
+  unnest(property_links)
+```
+
+```{r}
+board_complete <- board %>% 
+  # head(3) %>% 
+  mutate(info = map(property_link, possibly(get_property_details, "failed")))
+
+board_complete %>%
+  write_rds("Sweden/data_v3.rds")
+```
+
+
+```{r}
+board_complete <- board_complete %>% 
+  unnest(info) %>% 
+  select(name, property_link:value)
+```
+
+
+
+

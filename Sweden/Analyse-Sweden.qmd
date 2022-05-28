@@ -1,0 +1,160 @@
+---
+title: "Analyse Sweden"
+format: html
+---
+
+## Purpose
+
+EDA on data from hemnet
+
+```{r}
+library(tidyverse)
+
+board_complete <- read_rds("Sweden/data_v3.rds")
+board_complete <- board_complete %>% 
+  unnest(info)
+
+board_complete <- board_complete %>% 
+  select(name, property_link:value)
+```
+
+Questions:
+
+What is the best floor to live on and elevator vs no elevator.
+
+```{r}
+board_complete %>% 
+  # count(attribute, sort = T) %>% 
+  distinct(attribute)
+```
+
+Feature engineering
+
+price per square meter
+
+```{r}
+df <- board_complete %>% 
+  pivot_wider(names_from = attribute, values_from = value) %>% 
+  janitor::clean_names()
+
+colnames(df) <- c("name", "property_link", "price_per_sq_m", "asking_price", "final_price", "house_type", "form_of_ownership", "n_rooms", "area_sq_m", "year_of_construction", "monthly_fee", "operating_cost", "price", "coords_1", "coords_2", "sale_date", "association", "balcony", "floor", "patio", "secondary_area")
+
+num_vars <- c("price_per_sq_m", "asking_price", "final_price", "n_rooms", "area_sq_m", "year_of_construction", "monthly_fee", "operating_cost", "price")
+
+df <- df %>% 
+  mutate(across(c("coords_1", "coords_2"), parse_number),
+         across(num_vars, ~ str_remove_all(., " ")),
+         across(num_vars, ~ parse_number(., locale = locale(decimal_mark = ",", grouping_mark = "."))),
+         sale_date = lubridate::ymd(sale_date))
+```
+
+Numeric
+
+```{r}
+df %>%
+  count(n_rooms)
+
+df %>%
+  ggplot(aes(price_per_sq_m, price)) +
+  geom_point() +
+  geom_smooth() +
+  scale_x_continuous(labels = scales::dollar_format()) +
+  scale_y_continuous(labels = scales::dollar_format())
+
+df %>%
+  ggplot(aes(area_sq_m, price)) +
+  geom_point() +
+  geom_smooth() +
+  scale_x_continuous(labels = scales::number_format()) +
+  scale_y_continuous(labels = scales::dollar_format())
+```
+
+Categoricals
+
+```{r}
+df %>% count(house_type)
+
+df %>% count(form_of_ownership)
+
+df %>% count(floor, sort = T)
+
+df %>% select(floor) %>%
+  separate(floor, into = c("floor", "lift"), sep = "hiss") %>% 
+  count(floor, sort = T)
+```
+
+
+```{r}
+df %>% 
+  filter(price < 5e7) %>% 
+  ggplot(aes(coords_1, coords_2, colour = log(price))) +
+  geom_point() +
+  scale_color_gradient2(low = "blue", high = "red", mid = "pink",
+                        midpoint = 15)
+```
+
+
+```{r}
+df_comparison <- df %>% 
+  group_by(name) %>% 
+  summarise(median_price = median(price)) %>% 
+  inner_join(board %>% distinct(name, board_price))
+
+df_comparison %>% 
+  pivot_longer(-name, names_to = "price_type", values_to = "price") %>% 
+  ggplot(aes(price, y = name, fill = price_type)) +
+  geom_col() +
+  facet_wrap(~ price_type, scales = "free")
+
+df_comparison %>% 
+  ggplot(aes(median_price, board_price)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+
+```{r}
+df %>% 
+  ggplot(aes(final_price)) +
+  geom_density() +
+  scale_x_continuous(labels = scales::dollar_format())
+```
+
+### Price by rooms
+
+```{r}
+library(ggridges)
+
+df %>% 
+  filter(!is.na(n_rooms)) %>% 
+  mutate(n_rooms_chr = case_when(
+    n_rooms >= 6 ~ "6 + ",
+    TRUE ~ as.character(n_rooms)
+  )) %>% 
+  group_by(n_rooms_chr) %>% 
+  mutate(n_rooms_chr_obs = n()) %>% 
+  ungroup() %>% 
+  mutate(n_rooms_chr = str_c(n_rooms_chr, " rooms\n(", n_rooms_chr_obs, ")")) %>% 
+  ggplot(aes(x = price, y = n_rooms_chr, fill = n_rooms_chr)) +
+  geom_density_ridges(show.legend = F) +
+  scale_x_log10(labels = scales::dollar_format())
+```
+
+Boxplots?
+
+```{r}
+df %>% 
+  filter(!is.na(n_rooms)) %>% 
+  mutate(n_rooms_chr = case_when(
+    n_rooms >= 6 ~ "6 + ",
+    TRUE ~ as.character(n_rooms)
+  )) %>% 
+  group_by(n_rooms_chr) %>% 
+  mutate(n_rooms_chr_obs = n()) %>% 
+  ungroup() %>% 
+  mutate(n_rooms_chr = str_c(n_rooms_chr, " rooms\n(", n_rooms_chr_obs, ")")) %>% 
+  ggplot(aes(x = price, y = n_rooms_chr, fill = n_rooms_chr)) +
+  geom_boxplot(show.legend = F) +
+  scale_x_log10(labels = scales::dollar_format())
+```
+

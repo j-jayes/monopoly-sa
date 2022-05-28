@@ -1,0 +1,42 @@
+---
+title: "Prediction"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(modelsummary)
+
+```
+
+## Purpose
+
+Precition challege 
+
+### Read in data
+
+```{r}
+df <- read_rds(here::here("data/results/results_15_02_22.rds"))
+
+df %>% 
+  unnest(result_feature) %>% select(key, value) %>% 
+  count(key, sort = T) %>% tail()
+  pivot_wider(names_from = key, values_from = value) %>%
+  filter(!across(`5 Baths`:`.5 Baths`, is.na))
+```
+
+```{r}
+datasummary_skim(df)
+```
+
+
+```{r}
+library(ggridges)
+
+df %>% 
+  mutate(Property = fct_reorder(Property, price, .fun = mean)) %>% 
+  ggplot(aes(price, y = Property, fill = Property)) +
+  geom_density_ridges() +
+  scale_x_log10()
+```
+
